@@ -1,34 +1,53 @@
 from pygame import *
+from math import *
+
+class Ball:
+    def __init__(self, x, y, radius, color, speed):
+        self.speed=speed
+        self.x = x
+        self.y = y
+        self.radius = radius
+        self.color = color
+
+    def move(self):
+        keys = key.get_pressed()
+        if keys[K_UP]:
+            self.y -= self.speed
+        if keys[K_DOWN]:
+            self.y += self.speed
+        if keys[K_LEFT]:
+            self.x -= self.speed
+        if keys[K_RIGHT]:
+            self.x += self.speed
+
+    def reset(self):
+        draw.circle(window, self.color, (self.x, self.y),self.radius)
+
+    def collidecircle(self, ball2):
+        distance = hypot(self.x - ball2.x, self.y - ball2.y)
+        return distance < (self.radius + ball2.radius)
 
 init()
 
-size= 1000, 800
+size = 500, 500
+
 window = display.set_mode(size)
-display.set_caption('Моя гра')
+display.set_caption("Agario")
 clock = time.Clock()
 
-player = Rect(200, 200, 50, 50)
-player_speed = 5
+bg = image.load('15796580-agario-android-title-screen.png')
+bg = transform.scale(bg, size)
+
+ball = Ball(300, 300, 25, (255, 100, 255), 5)
 
 while True:
     for e in event.get():
         if e.type == QUIT:
             quit()
 
-    keys = key.get_pressed()
-    if keys[K_w]:
-        player.y -= player_speed
-    if keys[K_s]:
-        player.y += player_speed
-    if keys[K_a]:
-        player.x -= player_speed
-    if keys[K_d]:
-        player.x += player_speed
-
-    window.fill((255, 255, 255))
-    draw.rect(window, (0, 200, 0), player)
+    window.blit(bg, (0, 0))
+    ball. move()
+    ball.reset()
 
     display.update()
     clock.tick(60)
-
-
