@@ -1,93 +1,134 @@
+from math import hypot
 from pygame import *
-from math import *
 from random import randint
+from socket import socket, AF_INET, SOCK_STREAM
+from threading import Thread
+
+HOST = "127.0.0.1"
+PORT = 5000
+sock = socket(AF_INET, SOCK_STREAM)
+sock.connect((HOST, PORT))
+
+resv_data = sock.recv(64).decode().split(".")
+my_id, my_x, my_y, my_r = map(int, resv_data)
+
+
+
+# Налаштування
+size = (1000, 800)
+init()
+window = display.set_mode(size)
+clock = time.Clock()
+
+all_players = {}
+
+
+def receive_data():
+    global all_players, lose
+    while True:
+        try:
+            data = sock.recv(4096).decode()
+            if "LOSE" in data:
+                lose = True
+            elif data:
+                # Оновлюємо дані ворогів
+                for p in data.split("|"):
+                    if "," in p:
+                        parts = p.split(",")
+                        if len(parts) >= 4:
+                            pid = int(parts[0])
+                            if pid != my_id:
+                                all_players[pid] = [int(parts[1]), int(parts[2]), int(parts[3])]
+        except:
+            break
+
+Thread(target=receive_data, daemon=True).start()
+
+bg = image.load('15796580-agario-android-title-screen.png')
+bg = transform.scale(bg, size)
 
 class Ball:
     def __init__(self, x, y, radius, color, speed=0):
-        self.speed=speed
-        self.x = x
-        self.y = y
+        self.x, self.y = x, y
         self.radius = radius
         self.color = color
-        self.scale = 1
+        self.base_speed = speed
+        self.scale = 1.0
+        self.growth_limit = 60
 
-    def move(self):
+    def update_player(self, cells):
+        # Масштабування
+        self.scale = self.growth_limit / self.radius if self.radius > self.growth_limit else 1.0
+
         keys = key.get_pressed()
-        if keys[K_UP]:
-            self.y -= self.speed
-        if keys[K_DOWN]:
-            self.y += self.speed
-        if keys[K_LEFT]:
-            self.x -= self.speed
-        if keys[K_RIGHT]:
-            self.x += self.speed
+        speed = 15 * self.scale
+        if keys[K_UP]: self.y -= speed
+        if keys[K_DOWN]: self.y += speed
+        if keys[K_LEFT]: self.x -= speed
+        if keys[K_RIGHT]: self.x += speed
 
-    def reset(self):
-        self.scale = max(0.3, min(50 / self.radius, 1.5))
+        # Логіка поїдання (спрощено)
+        for cell in cells[:]:
+            if self.collidecircle(cell):
+                self.radius += cell.radius * 0.2
+                cells.remove(cell)
 
-        player_screen_radius = int(self.radius * self.scale)
-        draw.circle(window, self.color, (size[0] // 2, size[1] // 2), player_screen_radius)
-        draw.circle(window, self.color, (self.x, self.y),self.radius)
+    def draw(self, surface, camera_x, camera_y, camera_scale):
+        sx = int((self.x - camera_x) * camera_scale + size[0] // 2)
+        sy = int((self.y - camera_y) * camera_scale + size[1] // 2)
+        r = int(self.radius * camera_scale)
+        draw.circle(surface, self.color, (sx, sy), max(2, r))
 
     def collidecircle(self, ball2):
         distance = hypot(self.x - ball2.x, self.y - ball2.y)
         return distance < (self.radius + ball2.radius)
 
-init()
 
-size = 500, 500
+# Ініціалізація гравця
+player = Ball(0, 0, 30, (0, 255, 100))
 
-window = display.set_mode(size)
-display.set_caption("Agario")
-clock = time.Clock()
+# Генерація їжі (яблук)
+cells = [Ball(randint(-1000, 1000), randint(-1000, 1000), 10,
+              (randint(50, 200), randint(50, 200), randint(50, 200))) for _ in range(100)]
 
-bg = image.load('15796580-agario-android-title-screen.png')
-bg = transform.scale(bg, size)
-
-ball = Ball(300, 300, 25, (255, 100, 255), speed=5)
-
-f = font.Font(None, 50)
 running = True
-lose = False
-
-cells = [Ball(randint(-2000, 2000), randint(-2000, 2000), 10,(randint(50, 220), randint(50, 220))) for _ in range(300)]
-
 while running:
     for e in event.get():
-        if e.type == QUIT:
-            quit()
+        if e.type == QUIT: running = False
 
-    window.fill((40, 40, 60))
+    window.fill((40, 40, 40))
 
+    # Логіка руху
+    keys = key.get_pressed()
+    speed = 15 * player.scale
+    if keys[K_UP]: player.y -= speed
+    if keys[K_DOWN]: player.y += speed
+    if keys[K_LEFT]: player.x -= speed
+    if keys[K_RIGHT]: player.x += speed
+
+    # Оновлення масштабу
+    player.scale = player.growth_limit / player.radius if player.radius > player.growth_limit else 1.0
+
+    # Логіка поїдання
     to_remove = []
     for cell in cells:
-        if cell.collidecircle(ball):
-            to_remove.append(cell)
-            ball.radius += int(cell.radius * 0.2)
-        else:
-            sx = int((cell.x - ball.x) * ball.scale + size[0] // 2)
-            sy = int((cell.y - ball.y) * ball.scale + size[1] // 2)
+        # Малюємо їжу
+        cell.draw(window, player.x, player.y, player.scale)
 
-            cell_radius = int(cell.radius * ball.scale)
-            draw.circle(window, cell.color, (sx, sy), cell_radius)
+        # Перевірка зіткнення
+        if player.collidecircle(cell.x, cell.y, cell.radius):
+            to_remove.append(cell)
+            player.radius += cell.radius * 0.2
 
     for cell in to_remove:
         cells.remove(cell)
+        # Додаємо нове яблуко замість з'їденого
+        # cells.append(Ball(randint(-1000, 1000), randint(-1000, 1000), 10, (200, 200, 0)))
 
-    if not lose:
-        ball.reset()
-
-
-    if lose:
-        t = f.render("You lose!", 1, (244, 0, 0))
-        window.blit(t, (400, 500))
-
-
+    # Малювання гравця
+    player.draw(window, player.x, player.y, player.scale)
 
     display.update()
     clock.tick(60)
 
-    if not lose:
-        ball.move
-
-
+quit()
