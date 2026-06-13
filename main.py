@@ -4,23 +4,27 @@ from random import randint
 from socket import socket, AF_INET, SOCK_STREAM
 from threading import Thread
 
+# Налаштування мережі
 HOST = "127.0.0.1"
 PORT = 5000
 sock = socket(AF_INET, SOCK_STREAM)
 sock.connect((HOST, PORT))
 
-resv_data = sock.recv(64).decode().split(".")
+# Отримуємо свої дані при старті
+resv_data = sock.recv(64).decode().split(",")
 my_id, my_x, my_y, my_r = map(int, resv_data)
 
-
-
-# Налаштування
+# Налаштування вікна
 size = (1000, 800)
 init()
 window = display.set_mode(size)
 clock = time.Clock()
 
-all_players = {}
+all_players = {}  # Словник {id: [x, y, r]}
+
+player_img = image.load("images/player.png")
+enemy = image.load("images/enemy.jpg")
+bg_img = image.load("images/bg.jpg")
 
 
 def receive_data():
@@ -42,10 +46,9 @@ def receive_data():
         except:
             break
 
+
 Thread(target=receive_data, daemon=True).start()
 
-bg = image.load('15796580-agario-android-title-screen.png')
-bg = transform.scale(bg, size)
 
 class Ball:
     def __init__(self, x, y, radius, color, speed=0):
@@ -83,50 +86,58 @@ class Ball:
         distance = hypot(self.x - ball2.x, self.y - ball2.y)
         return distance < (self.radius + ball2.radius)
 
+# TODO: МИ ТУТ ЗУПИНИЛИСЯ!!!!
+# Ініціалізація
+ball = Ball(my_x, my_y, my_r, (0, 255, 100), speed=15)
+cells = [Ball(randint(-2000, 2000), randint(-2000, 2000), 10, (200, 200, 0)) for _ in range(300)]
+f = font.Font(None, 50)
 
-# Ініціалізація гравця
-player = Ball(0, 0, 30, (0, 255, 100))
+WORLD_SIZE = 4000
 
-# Генерація їжі (яблук)
-cells = [Ball(randint(-1000, 1000), randint(-1000, 1000), 10,
-              (randint(50, 200), randint(50, 200), randint(50, 200))) for _ in range(100)]
 
 running = True
+lose = False
 while running:
     for e in event.get():
-        if e.type == QUIT: running = False
+        if e.type == QUIT:
+            running = False
 
     window.fill((40, 40, 40))
 
-    # Логіка руху
-    keys = key.get_pressed()
-    speed = 15 * player.scale
-    if keys[K_UP]: player.y -= speed
-    if keys[K_DOWN]: player.y += speed
-    if keys[K_LEFT]: player.x -= speed
-    if keys[K_RIGHT]: player.x += speed
+    bg_scaled_size = int(WORLD_SIZE * ball.scale)
+    scaled_bg = transform.scale(bg_img, (bg_scaled_size, bg_scaled_size))
 
-    # Оновлення масштабу
-    player.scale = player.growth_limit / player.radius if player.radius > player.growth_limit else 1.0
+    base_bg_x = int((-2000 - ball.x) * ball.scale + size[0] // 2)
+    base_bg_y = int((-2000 - ball.y) * ball.scale + size[1] // 2)
 
-    # Логіка поїдання
-    to_remove = []
+    start_x = (base_bg_x % bg_scaled_size) - bg_scaled_size
+    start_y = (base_bg_y % bg_scaled_size) - bg_scaled_size
+
+    for x in range(start_x, size[0], bg_scaled_size):
+        for y in range(start_y, size[1], bg_scaled_size):
+            window.blit(scaled_bg, (x, y))
+
+    if not lose:
+        ball.update_player(cells)
+        # Відправка своїх координат на сервер
+        sock.send(f"{my_id},{int(ball.x)},{int(ball.y)},{int(ball.radius)},Player".encode())
+
+    # Малювання яблук
     for cell in cells:
-        # Малюємо їжу
-        cell.draw(window, player.x, player.y, player.scale)
+        cell.draw(window, ball.x, ball.y, ball.scale)
 
-        # Перевірка зіткнення
-        if player.collidecircle(cell.x, cell.y, cell.radius):
-            to_remove.append(cell)
-            player.radius += cell.radius * 0.2
+    # Малювання ворогів
+    for pid, data in all_players.items():
+        # Малюємо ворога як червоне коло
+        ox, oy, orad = data
+        sx = int((ox - ball.x) * ball.scale + size[0] // 2)
+        sy = int((oy - ball.y) * ball.scale + size[1] // 2)
+        r = max(4, int(orad * ball.scale))
 
-    for cell in to_remove:
-        cells.remove(cell)
-        # Додаємо нове яблуко замість з'їденого
-        # cells.append(Ball(randint(-1000, 1000), randint(-1000, 1000), 10, (200, 200, 0)))
-
-    # Малювання гравця
-    player.draw(window, player.x, player.y, player.scale)
+    if not lose:
+        ball.draw(window, ball.x, ball.y, 1.0 if ball.radius < 60 else ball.scale)
+    else:
+        window.blit(f.render("U lose!", 1, (244, 0, 0)), (400, 500))
 
     display.update()
     clock.tick(60)
