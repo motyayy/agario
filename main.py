@@ -23,7 +23,7 @@ clock = time.Clock()
 all_players = {}  # Словник {id: [x, y, r]}
 
 player_img = image.load("images/player.png")
-enemy = image.load("images/enemy.jpg")
+enemy_img = image.load("images/enemy.jpg")
 bg_img = image.load("images/bg.jpg")
 
 
@@ -60,7 +60,7 @@ class Ball:
         self.growth_limit = 60
 
     def update_player(self, cells):
-        # Масштабування
+        #         # Масабування
         self.scale = self.growth_limit / self.radius if self.radius > self.growth_limit else 1.0
 
         keys = key.get_pressed()
@@ -76,11 +76,17 @@ class Ball:
                 self.radius += cell.radius * 0.2
                 cells.remove(cell)
 
-    def draw(self, surface, camera_x, camera_y, camera_scale):
+    def draw(self, surface, camera_x, camera_y, camera_scale, img=None):
         sx = int((self.x - camera_x) * camera_scale + size[0] // 2)
         sy = int((self.y - camera_y) * camera_scale + size[1] // 2)
         r = int(self.radius * camera_scale)
-        draw.circle(surface, self.color, (sx, sy), max(2, r))
+        # draw.circle(surface, self.color, (sx, sy), max(2, r))
+
+        if img:
+            scaled_img = transform.scale(img, (r * 2, r * 2))
+            surface.blit(scaled_img, (sx - r, sy - r))
+        else:
+            draw.circle(surface, self.color, (sx, sy), max(2, r))
 
     def collidecircle(self, ball2):
         distance = hypot(self.x - ball2.x, self.y - ball2.y)
@@ -134,8 +140,11 @@ while running:
         sy = int((oy - ball.y) * ball.scale + size[1] // 2)
         r = max(4, int(orad * ball.scale))
 
+        scaled_enemy = transform.scale(enemy_img, (r * 2, r * 2))
+        window.blit(scaled_enemy, (sx - r, sy - r))
+
     if not lose:
-        ball.draw(window, ball.x, ball.y, 1.0 if ball.radius < 60 else ball.scale)
+        ball.draw(window, ball.x, ball.y, 1.0 if ball.radius < 60 else ball.scale, img=player_img)
     else:
         window.blit(f.render("U lose!", 1, (244, 0, 0)), (400, 500))
 
